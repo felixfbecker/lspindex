@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": { "*": ["types/*"] },
     "target": "es2018",
+    "lib": ["es2018"],
     "module": "commonjs",
     "esModuleInterop": true,
     "strict": true,
     "outDir": "build",
     "rootDir": "src",
+    "noErrorTruncation": true,
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "sourceMap": true
   }
 }

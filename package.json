@@ -13,6 +13,7 @@
     "jsdom": "^14.0.0",
     "mz": "^2.7.0",
     "object-hash": "^1.3.1",
+    "sourcegraph": "^23.0.1",
     "vscode-jsonrpc": "^4.0.0",
     "vscode-languageserver-protocol": "^3.14.1",
     "yargs": "^13.2.2"

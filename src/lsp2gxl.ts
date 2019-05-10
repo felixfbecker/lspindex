@@ -20,7 +20,7 @@ import {
 } from "vscode-jsonrpc";
 import { spawn } from "child_process";
 import * as path from "path";
-import { pathToFileURL } from "url";
+import { pathToFileURL, fileURLToPath } from "url";
 import glob from "fast-glob";
 import { asGXL, getGXLSymbolKind } from "./gxl";
 import { writeFile, readFile } from "mz/fs";
@@ -108,56 +108,93 @@ async function main() {
       const uri = pathToFileURL(file.toString()).href;
       const docParams: DocumentSymbolParams = { textDocument: { uri } };
       console.log("Getting symbols for", file);
-      const docSymbols = await connection.sendRequest(
-        DocumentSymbolRequest.type,
-        docParams
-      );
-      if (!docSymbols) {
-        continue;
-      }
+      const docSymbols: LSPSymbol[] =
+        (await connection.sendRequest(DocumentSymbolRequest.type, docParams)) ||
+        [];
       symbols.set(uri, docSymbols);
 
-      // Get references for each symbol
-      for (const symbol of docSymbols) {
-        if (!getGXLSymbolKind(symbol)) {
-          continue;
+      // Add symbols for directories
+      const segments = file.toString().split("/");
+      while (segments.pop()) {
+        const dir = segments.join("/");
+        const uri = pathToFileURL(dir).href;
+        if (!symbols.has(uri)) {
+          symbols.set(uri, [
+            {
+              name: path.relative(rootPath, dir),
+              containerName: path.relative(
+                rootPath,
+                path.join(dir.toString(), "..")
+              ),
+              kind: SymbolKind.File,
+              location: {
+                uri,
+                range: {
+                  start: { line: 0, character: 0 },
+                  end: { line: 0, character: 0 }
+                }
+              }
+            }
+          ]);
         }
-        const range = DocumentSymbol.is(symbol)
-          ? symbol.selectionRange
-          : symbol.location.range;
-        const referencePosition = range.start;
-        const content = await readFile(file, { encoding: "utf-8" });
-        const lineContent = content.split("\n")[range.start.line];
-        // Don't get references on import bindings
-        if (/\bimport\b/.test(lineContent)) {
-          continue;
-        }
-        if (lineContent.slice(referencePosition.character).startsWith("def ")) {
-          referencePosition.character += "def ".length + 1;
-        }
-        if (
-          lineContent.slice(referencePosition.character).startsWith("class ")
-        ) {
-          referencePosition.character += "class ".length + 1;
-        }
-        console.log("\nGetting references for", symbol.name);
-        console.log(
-          lineContent.slice(0, range.start.character) +
-            "❗️" +
-            lineContent.slice(range.start.character)
-        );
-        const referenceParams: ReferenceParams = {
-          context: { includeDeclaration: false },
-          textDocument: { uri },
-          position: referencePosition
-        };
-        const references = await connection.sendRequest(
-          ReferencesRequest.type,
-          referenceParams
-        );
-        console.log("references", references && references.length);
-        allReferences.set(symbol, references || []);
       }
+
+      // Get references for each symbol
+      // for (const symbol of docSymbols) {
+      //   if (!getGXLSymbolKind(symbol)) {
+      //     continue;
+      //   }
+      //   const range = DocumentSymbol.is(symbol)
+      //     ? symbol.selectionRange
+      //     : symbol.location.range;
+      //   const referencePosition = range.start;
+      //   const content = await readFile(file, { encoding: "utf-8" });
+      //   const lineContent = content.split("\n")[range.start.line];
+      //   // Don't get references on import bindings
+      //   if (/\bimport\b/.test(lineContent)) {
+      //     continue;
+      //   }
+      //   if (lineContent.slice(referencePosition.character).startsWith("def ")) {
+      //     referencePosition.character += "def ".length + 1;
+      //   }
+      //   if (
+      //     lineContent.slice(referencePosition.character).startsWith("class ")
+      //   ) {
+      //     referencePosition.character += "class ".length + 1;
+      //   }
+      //   console.log("\nGetting references for", symbol.name);
+      //   console.log(
+      //     lineContent.slice(0, range.start.character) +
+      //       "❗️" +
+      //       lineContent.slice(range.start.character)
+      //   );
+      //   const referenceParams: ReferenceParams = {
+      //     context: { includeDeclaration: false },
+      //     textDocument: { uri },
+      //     position: referencePosition
+      //   };
+      //   const references = await connection.sendRequest(
+      //     ReferencesRequest.type,
+      //     referenceParams
+      //   );
+      //   console.log("references", references && references.length);
+      //   allReferences.set(symbol, references || []);
+      // }
+
+      // Add symbol for file
+      const relativePath = path.relative(rootPath, file.toString());
+      docSymbols.push({
+        name: relativePath,
+        containerName: path.join(relativePath, ".."),
+        kind: SymbolKind.File,
+        location: {
+          uri: pathToFileURL(file.toString()).href,
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 }
+          }
+        }
+      });
     }
 
     // After knowing all symbols:
@@ -194,7 +231,7 @@ async function main() {
       symbolToSymbolReferences.set(definitionSymbol, referencingSymbols);
     }
 
-    const gxl = asGXL(symbols, symbolToSymbolReferences);
+    const gxl = asGXL(symbols, symbolToSymbolReferences, rootPath);
     const outFile = path.resolve(argv.outFile);
     await writeFile(outFile, gxl);
     console.log("wrote result to", outFile);

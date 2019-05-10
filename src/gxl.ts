@@ -4,9 +4,10 @@ import {
   SymbolKind
 } from "vscode-languageserver-types";
 import { JSDOM, DOMWindow } from "jsdom";
-import hashObject from "object-hash";
-import { fileURLToPath } from "url";
+import objectId from "object-hash";
+import { fileURLToPath, pathToFileURL } from "url";
 import { LSPSymbol } from "./lsp";
+import * as path from "path";
 
 type GXLEdgeType = "Source_Dependency" | "Enclosing";
 
@@ -14,7 +15,8 @@ const XLINK_NS = "http://www.w3.org/1999/xlink";
 
 export function asGXL(
   symbolsByFile: Map<string, LSPSymbol[]>,
-  references: Map<LSPSymbol, LSPSymbol[]>
+  references: Map<LSPSymbol, LSPSymbol[]>,
+  rootPath: string
 ): string {
   const jsdom = new JSDOM(
     `<?xml version="1.0" encoding="utf-8"?>
@@ -26,7 +28,7 @@ export function asGXL(
   const graphElement = document.documentElement.appendChild(
     document.createElement("graph")
   );
-  graphElement.setAttribute("id", hashObject([symbolsByFile, references]));
+  graphElement.setAttribute("id", objectId([symbolsByFile, references]));
 
   function createGXLType(type: string) {
     const typeEl = document.createElement("type");
@@ -57,7 +59,7 @@ export function asGXL(
     const edge = document.createElement("edge");
     edge.setAttribute("from", from);
     edge.setAttribute("to", to);
-    edge.append("\n  ", createGXLType(type));
+    edge.append("\n  ", createGXLType(type), "\n");
     return edge;
   }
 
@@ -83,7 +85,7 @@ export function asGXL(
 
   for (const [uri, symbols] of symbolsByFile) {
     for (const symbol of symbols) {
-      const nodeID = hashObject(symbol);
+      const nodeID = objectId(symbol);
       const type = getGXLSymbolKind(symbol);
       if (!type) {
         continue;
@@ -91,6 +93,47 @@ export function asGXL(
       const range = DocumentSymbol.is(symbol)
         ? symbol.range
         : symbol.location.range;
+
+      // Add node for parent directory
+      if (symbol.kind === SymbolKind.File) {
+        console.log("Adding node for directory", symbol.name);
+        const filePath = fileURLToPath(uri);
+        const relativeFilePath = path.relative(rootPath, filePath);
+        if (relativeFilePath !== ".") {
+          const parentDirectoryUri = pathToFileURL(path.join(filePath, ".."))
+            .href;
+          const parentDirSymbol = symbolsByFile.get(parentDirectoryUri);
+          if (parentDirSymbol) {
+            const edge = createGXLEdge(
+              nodeID,
+              objectId(parentDirSymbol),
+              "Enclosing"
+            );
+            graphElement.append("\n", edge);
+          } else {
+            console.warn("No parent dir symbol for", symbol);
+          }
+        }
+      } else {
+        // Try to add an edge to containerName, if exists
+        if (!DocumentSymbol.is(symbol)) {
+          const container = symbols.find(s => s.name === symbol.containerName);
+          if (container) {
+            createGXLEdge(nodeID, objectId(container), "Enclosing");
+          } else {
+            // Add edge to containing file
+            const fileSymbol = symbols.find(
+              s =>
+                s.kind === SymbolKind.File &&
+                s.name === path.relative(rootPath, fileURLToPath(uri))
+            )!;
+            if (fileSymbol) {
+              createGXLEdge(nodeID, objectId(fileSymbol), "Enclosing");
+            }
+          }
+        }
+      }
+
       const node = createGXLNode(nodeID, type, {
         "Source.Name": symbol.name,
         "Source.Line": range.start.line,
@@ -101,7 +144,7 @@ export function asGXL(
 
       // References
       for (const reference of references.get(symbol) || []) {
-        const referenceNodeID = hashObject(reference);
+        const referenceNodeID = objectId(reference);
         const edge = createGXLEdge(
           referenceNodeID,
           nodeID,
@@ -121,6 +164,7 @@ export function asGXL(
 
 export function getGXLSymbolKind(symbol: LSPSymbol): string | undefined {
   switch (symbol.kind) {
+    case SymbolKind.File:
     case SymbolKind.Module:
       return "File";
     case SymbolKind.Class:

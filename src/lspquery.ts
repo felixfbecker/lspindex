@@ -106,6 +106,7 @@ async function main() {
     });
     for await (const file of files) {
       const uri = pathToFileURL(file.toString()).href;
+      const relativePath = path.relative(rootPath, file.toString());
       const docParams: DocumentSymbolParams = { textDocument: { uri } };
       console.log("Getting symbols for", file);
       const docSymbols: LSPSymbol[] =
@@ -114,18 +115,22 @@ async function main() {
       symbols.set(uri, docSymbols);
 
       // Add symbols for directories
-      const segments = file.toString().split("/");
+      const segments = file.toString().split(path.sep);
       while (segments.pop()) {
-        const dir = segments.join("/");
+        const dir = segments.join(path.sep);
+        const relativeDirPath = path.relative(rootPath, dir);
+        if (
+          relativeDirPath === ".." ||
+          relativeDirPath.startsWith(".." + path.sep)
+        ) {
+          break;
+        }
         const uri = pathToFileURL(dir).href;
         if (!symbols.has(uri)) {
           symbols.set(uri, [
             {
-              name: path.relative(rootPath, dir),
-              containerName: path.relative(
-                rootPath,
-                path.join(dir.toString(), "..")
-              ),
+              name: path.basename(dir),
+              containerName: path.basename(path.join(dir, "..")),
               kind: SymbolKind.File,
               location: {
                 uri,
@@ -182,7 +187,6 @@ async function main() {
       // }
 
       // Add symbol for file
-      const relativePath = path.relative(rootPath, file.toString());
       docSymbols.push({
         name: relativePath,
         containerName: path.join(relativePath, ".."),

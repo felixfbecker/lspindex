@@ -11,6 +11,13 @@ import * as path from "path";
 
 type GXLEdgeType = "Source_Dependency" | "Enclosing";
 
+interface GXLNodeAttributes {
+  "Source.Name": string;
+  "Source.Line": number;
+  "Source.Column": number;
+  "Source.Path": string;
+}
+
 const XLINK_NS = "http://www.w3.org/1999/xlink";
 
 export function asGXL(
@@ -25,9 +32,8 @@ export function asGXL(
   );
   const window = jsdom.window as DOMWindow & typeof globalThis;
   const document: XMLDocument = window.document;
-  const graphElement = document.documentElement.appendChild(
-    document.createElement("graph")
-  );
+  const graphElement = document.createElement("graph");
+  document.documentElement.append("\n", graphElement);
   graphElement.setAttribute("id", objectId([symbolsByFile, references]));
 
   function createGXLType(type: string) {
@@ -39,16 +45,17 @@ export function asGXL(
   function createGXLNode(
     id: string,
     type: string,
-    attrs: Record<string, string | number | undefined>
+    attrs: GXLNodeAttributes
   ): Element {
     const node = document.createElement("node");
     node.setAttribute("id", id);
     node.append("\n  ", createGXLType(type));
 
     for (const [name, value] of Object.entries(attrs)) {
-      if (value) {
-        addGXLAttribute(node, name, value);
+      if (value === null || value === undefined) {
+        throw new Error(`Attribute ${name} for node ${id} has no value`);
       }
+      addGXLAttribute(node, name, value);
     }
 
     node.append("\n");
@@ -83,27 +90,34 @@ export function asGXL(
     node.append("\n  ", attribute);
   }
 
+  const nodeIds = new Set<string>();
+  const edgeNodeIds: { from: string; to: string }[] = [];
+
   for (const [uri, symbols] of symbolsByFile) {
     for (const symbol of symbols) {
-      const nodeID = objectId(symbol);
       const type = getGXLSymbolKind(symbol);
       if (!type) {
         continue;
       }
+      const nodeID = symbol.name + ":" + objectId(symbol);
+      nodeIds.add(nodeID);
       const range = DocumentSymbol.is(symbol)
         ? symbol.range
         : symbol.location.range;
 
       // Add node for parent directory
       if (symbol.kind === SymbolKind.File) {
-        console.log("Adding node for directory", symbol.name);
         const filePath = fileURLToPath(uri);
         const relativeFilePath = path.relative(rootPath, filePath);
-        if (relativeFilePath !== ".") {
+        if (
+          relativeFilePath !== ".." &&
+          !relativeFilePath.startsWith(".." + path.sep)
+        ) {
           const parentDirectoryUri = pathToFileURL(path.join(filePath, ".."))
             .href;
           const parentDirSymbol = symbolsByFile.get(parentDirectoryUri);
           if (parentDirSymbol) {
+            console.log("Adding node for directory of", filePath);
             const edge = createGXLEdge(
               nodeID,
               objectId(parentDirSymbol),
@@ -138,13 +152,14 @@ export function asGXL(
         "Source.Name": symbol.name,
         "Source.Line": range.start.line,
         "Source.Column": range.start.character,
-        "Source.Path": fileURLToPath(uri)
+        "Source.Path": path.relative(rootPath, fileURLToPath(uri))
       });
       graphElement.append("\n", node);
 
       // References
       for (const reference of references.get(symbol) || []) {
         const referenceNodeID = objectId(reference);
+        edgeNodeIds.push({ from: referenceNodeID, to: nodeID });
         const edge = createGXLEdge(
           referenceNodeID,
           nodeID,
@@ -152,6 +167,13 @@ export function asGXL(
         );
         graphElement.append("\n", edge);
       }
+    }
+  }
+
+  // Verify
+  for (const edge of edgeNodeIds) {
+    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+      throw new Error(`Edge is referencing non-existant node`);
     }
   }
 

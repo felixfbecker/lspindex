@@ -10,7 +10,7 @@
     "build"
   ],
   "license": "MIT",
-  "bin": "build/lspquery.js",
+  "bin": "cli.js",
   "scripts": {
     "build": "tsc -p ."
   },

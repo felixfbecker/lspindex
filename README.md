@@ -5,10 +5,18 @@ A CLI tool to start a language server speaking the
 on a project, query all its symbols and references and output the result as
 graph encoded in GXL.
 
+## Install
+
+You need NodeJS installed.
+
+```
+npm install --global lspquery
+```
+
 ## Usage
 
 ```
-lsp2gxl --rootUri <rootUri> <language server command to run>
+lspquery --rootUri <rootUri> <language server command to run>
 
 Options:
   --version      Show version number                                   [boolean]
@@ -20,15 +28,13 @@ Options:
   --help         Show help                                             [boolean]
 
 Examples:
-  lsp2gxl --rootPath                        Analyze Python files in the flask
+  lspquery --rootPath                        Analyze Python files in the flask
   /Users/felix/git/flask --filePattern      project with the Python language
   '**/*.py' --outFile flask.gxl pyls        server and write the result to
                                             flask.gxl
 ```
 
 ## Build
-
-You need NodeJS installed.
 
 ```
 npm install

@@ -1,4 +1,19 @@
 {
+  "name": "lspquery",
+  "version": "0.0.1",
+  "description": "CLI tool to build a symbol graph by querying a language server",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/felixfbecker/lspquery"
+  },
+  "files": [
+    "build"
+  ],
+  "license": "MIT",
+  "bin": "build/lspquery.js",
+  "scripts": {
+    "build": "tsc -p ."
+  },
   "devDependencies": {
     "@types/jsdom": "^12.2.3",
     "@types/mz": "0.0.32",

@@ -4,12 +4,21 @@ import {
   SymbolKind
 } from "vscode-languageserver-types";
 import { JSDOM, DOMWindow } from "jsdom";
-import objectId from "object-hash";
+import hashObject from "object-hash";
 import { fileURLToPath, pathToFileURL } from "url";
 import { LSPSymbol } from "./lsp";
 import * as path from "path";
 
 type GXLEdgeType = "Source_Dependency" | "Enclosing";
+
+const symbolId = (symbol: LSPSymbol): string =>
+  String(symbol.kind) +
+  ":" +
+  String(getGXLSymbolKind(symbol)) +
+  ":" +
+  symbol.name +
+  ":" +
+  hashObject(symbol);
 
 interface GXLNodeAttributes {
   "Source.Name": string;
@@ -34,7 +43,7 @@ export function asGXL(
   const document: XMLDocument = window.document;
   const graphElement = document.createElement("graph");
   document.documentElement.append("\n", graphElement);
-  graphElement.setAttribute("id", objectId([symbolsByFile, references]));
+  graphElement.setAttribute("id", hashObject([symbolsByFile, references]));
 
   function createGXLType(type: string) {
     const typeEl = document.createElement("type");
@@ -99,7 +108,7 @@ export function asGXL(
       if (!type) {
         continue;
       }
-      const nodeID = symbol.name + ":" + objectId(symbol);
+      const nodeID = symbolId(symbol);
       nodeIds.add(nodeID);
       const range = DocumentSymbol.is(symbol)
         ? symbol.range
@@ -113,19 +122,30 @@ export function asGXL(
           relativeFilePath !== ".." &&
           !relativeFilePath.startsWith(".." + path.sep)
         ) {
-          const parentDirectoryUri = pathToFileURL(path.join(filePath, ".."))
-            .href;
-          const parentDirSymbol = symbolsByFile.get(parentDirectoryUri);
-          if (parentDirSymbol) {
-            console.log("Adding node for directory of", filePath);
-            const edge = createGXLEdge(
-              nodeID,
-              objectId(parentDirSymbol),
-              "Enclosing"
-            );
-            graphElement.append("\n", edge);
-          } else {
-            console.warn("No parent dir symbol for", symbol);
+          const parentDirectoryPath = path.join(filePath, "..");
+          const parentDirectoryUri = pathToFileURL(parentDirectoryPath).href;
+          if (parentDirectoryPath !== rootPath) {
+            const parentDirSymbols = symbolsByFile.get(parentDirectoryUri);
+            if (parentDirSymbols) {
+              if (
+                parentDirSymbols.length > 1 ||
+                parentDirSymbols[0].kind !== SymbolKind.File
+              ) {
+                console.error(
+                  "Error: Expected parent dir to only have a single symbol of kind File, got",
+                  parentDirSymbols
+                );
+              }
+              console.log("Adding node for directory of", filePath);
+              const edge = createGXLEdge(
+                nodeID,
+                symbolId(parentDirSymbols[0]),
+                "Enclosing"
+              );
+              graphElement.append("\n", edge);
+            } else {
+              console.error("Error: Expected parent dir symbol for", symbol);
+            }
           }
         }
       } else {
@@ -133,7 +153,7 @@ export function asGXL(
         if (!DocumentSymbol.is(symbol)) {
           const container = symbols.find(s => s.name === symbol.containerName);
           if (container) {
-            createGXLEdge(nodeID, objectId(container), "Enclosing");
+            createGXLEdge(nodeID, symbolId(container), "Enclosing");
           } else {
             // Add edge to containing file
             const fileSymbol = symbols.find(
@@ -142,7 +162,7 @@ export function asGXL(
                 s.name === path.relative(rootPath, fileURLToPath(uri))
             )!;
             if (fileSymbol) {
-              createGXLEdge(nodeID, objectId(fileSymbol), "Enclosing");
+              createGXLEdge(nodeID, symbolId(fileSymbol), "Enclosing");
             }
           }
         }
@@ -157,8 +177,8 @@ export function asGXL(
       graphElement.append("\n", node);
 
       // References
-      for (const reference of references.get(symbol) || []) {
-        const referenceNodeID = objectId(reference);
+      for (const referenceSymbol of references.get(symbol) || []) {
+        const referenceNodeID = symbolId(referenceSymbol);
         edgeNodeIds.push({ from: referenceNodeID, to: nodeID });
         const edge = createGXLEdge(
           referenceNodeID,
@@ -172,8 +192,16 @@ export function asGXL(
 
   // Verify
   for (const edge of edgeNodeIds) {
-    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
-      throw new Error(`Edge is referencing non-existant node`);
+    if (!nodeIds.has(edge.from)) {
+      console.error(
+        `Error: Edge is referencing non-existant from node ${edge.from}`
+      );
+    }
+
+    if (!nodeIds.has(edge.to)) {
+      console.error(
+        `Error: Edge is referencing non-existant to node ${edge.to}`
+      );
     }
   }
 
@@ -198,5 +226,7 @@ export function getGXLSymbolKind(symbol: LSPSymbol): string | undefined {
       return "Method";
     case SymbolKind.Function:
       return "Routine";
+    // case SymbolKind.Variable:
+    //   return "Variable";
   }
 }

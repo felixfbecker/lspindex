@@ -1,4 +1,4 @@
-# lspquery
+# lspindex
 
 A CLI tool to start a language server speaking the
 [Language Server Protocol](https://microsoft.github.io/language-server-protocol/)
@@ -10,13 +10,13 @@ graph encoded in GXL.
 You need NodeJS installed.
 
 ```
-npm install --global lspquery
+npm install --global lspindex
 ```
 
 ## Usage
 
 ```
-lspquery --rootUri <rootUri> <language server command to run>
+lspindex --rootUri <rootUri> <language server command to run>
 
 Options:
   --version      Show version number                                   [boolean]
@@ -28,7 +28,7 @@ Options:
   --help         Show help                                             [boolean]
 
 Examples:
-  lspquery --rootPath                        Analyze Python files in the flask
+  lspindex --rootPath                        Analyze Python files in the flask
   /Users/felix/git/flask --filePattern      project with the Python language
   '**/*.py' --outFile flask.gxl pyls        server and write the result to
                                             flask.gxl

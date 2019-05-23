@@ -26,7 +26,7 @@ import { writeFile, readFile } from "mz/fs";
 import { Range } from "@sourcegraph/extension-api-classes";
 import { LSPSymbol } from "./lsp";
 import { sortBy, invert, mapValues } from "lodash";
-import signale from "signale";
+import { Signale, SignaleOptions } from "signale";
 import * as util from "util";
 
 const symbolSizes = mapValues(
@@ -65,10 +65,12 @@ const symbolSizes = mapValues(
 
 async function main() {
   const using: (() => any)[] = [];
+  let logger = new Signale();
   try {
     util.inspect.defaultOptions = {
       ...util.inspect.defaultOptions,
-      colors: true
+      colors: true,
+      depth: 3
     };
     const argv = yargs
       .option("rootPath", {
@@ -91,18 +93,26 @@ async function main() {
         type: "boolean",
         description: "Do not include references"
       })
+      .option("logLevel", {
+        type: "string",
+        description: "info, debug, warn, error (default: info)"
+      })
       .usage("lsp2gxl --rootUri <rootUri> <language server command to run>")
       .example(
         `lsp2gxl --rootPath /Users/felix/git/flask --filePattern '**/*.py' --outFile flask.gxl pyls`,
         "Analyze Python files in the flask project with the Python language server and write the result to flask.gxl"
       )
       .help().argv;
+    if (argv.logLevel) {
+      logger = new Signale({ logLevel: argv.logLevel } as SignaleOptions);
+    }
     if (argv._.length < 1) {
-      signale.error("No language server command given");
+      logger.fatal("No language server command given");
       process.exitCode = 1;
       return;
     }
-    signale.info("running", argv._);
+    const timer = logger.time("time");
+    logger.info("Executing language server", argv._);
 
     // let json: any | undefined;
     // try {
@@ -110,7 +120,7 @@ async function main() {
     //     await readFile(argv.outFile.replace(/\.gxl$/, ".json"), "utf-8")
     //   );
     // } catch (err) {
-    //   signale.error(err.message);
+    //   logger.error(err.message);
     // }
 
     // Spawn language server
@@ -119,11 +129,11 @@ async function main() {
     const connection = createMessageConnection(
       new StreamMessageReader(childProcess.stdout),
       new StreamMessageWriter(childProcess.stdin),
-      signale
+      logger
     );
     connection.listen();
     using.push(() => connection.sendRequest(ShutdownRequest.type));
-    connection.onError(err => signale.error(err));
+    connection.onError(err => logger.error(err));
 
     // Initialize
     const rootPath = path.resolve(argv.rootPath);
@@ -138,7 +148,7 @@ async function main() {
       InitializeRequest.type,
       initParams
     );
-    signale.info("Initialize result", initResult);
+    logger.info("Initialize result", initResult);
 
     // Query symbols
     /** Map from URI to symbols */
@@ -148,7 +158,7 @@ async function main() {
     const symbolToSymbolReferences = new Map<LSPSymbol, LSPSymbol[]>();
 
     if (!argv.filePattern) {
-      signale.error("No file pattern provided");
+      logger.error("No file pattern provided");
       process.exitCode = 1;
       return;
     }
@@ -161,7 +171,8 @@ async function main() {
       const uri = pathToFileURL(file.toString()).href;
       const relativePath = path.relative(rootPath, file.toString());
       const docParams: DocumentSymbolParams = { textDocument: { uri } };
-      signale.await("Getting symbols for", file);
+      const fileLogger = logger.scope(relativePath);
+      fileLogger.await("Getting symbols for", file);
       const docSymbols: LSPSymbol[] =
         (await connection.sendRequest(DocumentSymbolRequest.type, docParams)) ||
         [];
@@ -198,7 +209,12 @@ async function main() {
       }
 
       // Get references for each symbol
-      if (!argv.noReferences) {
+      if (argv.noReferences) {
+        fileLogger.info(
+          "Skipping references because --no-references was given"
+        );
+      } else {
+        fileLogger.await("Getting references for each symbol");
         for (const symbol of docSymbols) {
           if (!getGXLSymbolKind(symbol)) {
             continue;
@@ -223,8 +239,8 @@ async function main() {
           ) {
             referencePosition.character += "class ".length + 1;
           }
-          signale.await("Getting references for", chalk.italic(symbol.name));
-          signale.info(
+          fileLogger.await("Getting references for", chalk.italic(symbol.name));
+          fileLogger.info(
             "Code line:",
             lineContent.slice(0, range.start.character) +
               chalk.bgWhite.black(lineContent[range.start.character]) +
@@ -239,7 +255,7 @@ async function main() {
             ReferencesRequest.type,
             referenceParams
           );
-          signale.success("Found", (references || []).length, "references");
+          fileLogger.success("Found", (references || []).length, "references");
           allReferences.set(symbol, references || []);
         }
       }
@@ -261,6 +277,9 @@ async function main() {
 
     // After knowing all symbols:
     // For each reference, check all symbol ranges to find the symbol range the reference is contained in.
+    logger.await(
+      "Mapping references to containing symbols (building reference graph)"
+    );
     for (const [definitionSymbol, references] of allReferences) {
       const referencingSymbols: LSPSymbol[] = [];
       for (const reference of references) {
@@ -279,16 +298,16 @@ async function main() {
           ).contains(referenceRange)
         );
         if (!referencingSymbol) {
-          signale.warn(
+          logger.warn(
             `Reference to ${chalk.bold(
               definitionSymbol.name
-            )} was not within any symbol`,
-            reference
+            )} was not within any symbol`
           );
+          logger.debug({ reference, definitionSymbol });
           continue;
         }
         if (!getGXLSymbolKind(referencingSymbol)) {
-          signale.info(
+          logger.info(
             `Reference of ${referencingSymbol.name} to ${
               definitionSymbol.name
             } excluded because it is of kind ${getGXLSymbolKind(
@@ -296,7 +315,7 @@ async function main() {
             )}`
           );
         }
-        signale.success(
+        logger.success(
           `Mapped reference from ${chalk.bold(
             referencingSymbol.name
           )} to ${chalk.bold(definitionSymbol.name)}`
@@ -306,6 +325,7 @@ async function main() {
       symbolToSymbolReferences.set(definitionSymbol, referencingSymbols);
     }
 
+    logger.await("Serializing to GXL");
     const outFile = path.resolve(argv.outFile);
     // await writeFile(
     //   outFile.replace(/\.gxl$/, ".json"),
@@ -319,11 +339,12 @@ async function main() {
     //     2
     //   )
     // );
-    const gxl = asGXL(symbols, symbolToSymbolReferences, rootPath);
+    const gxl = asGXL(symbols, symbolToSymbolReferences, rootPath, logger);
     await writeFile(outFile, gxl);
-    signale.success("wrote result to", outFile);
+    logger.success("wrote result to", outFile);
+    logger.timeEnd(timer);
   } catch (err) {
-    signale.fatal(err);
+    logger.fatal(err);
     process.exitCode = 1;
   } finally {
     for (const fn of using) {

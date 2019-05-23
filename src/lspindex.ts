@@ -19,7 +19,7 @@ import {
 } from "vscode-jsonrpc";
 import { spawn } from "child_process";
 import * as path from "path";
-import { pathToFileURL } from "url";
+import { pathToFileURL, fileURLToPath } from "url";
 import glob from "fast-glob";
 import { asGXL, getGXLSymbolKind } from "./gxl";
 import { writeFile, readFile } from "mz/fs";
@@ -28,6 +28,7 @@ import { LSPSymbol } from "./lsp";
 import { sortBy, invert, mapValues } from "lodash";
 import { Signale, SignaleOptions } from "signale";
 import * as util from "util";
+import micromatch from "micromatch";
 
 const symbolSizes = mapValues(
   invert(
@@ -83,6 +84,10 @@ async function main() {
         type: "string",
         description:
           "Glob pattern for files that symbols should be collected from (relative to rootPath)"
+      })
+      .option("ignore", {
+        type: "array",
+        description: "Glob pattern of files to ignore"
       })
       .option("outFile", {
         type: "string",
@@ -158,13 +163,15 @@ async function main() {
     const symbolToSymbolReferences = new Map<LSPSymbol, LSPSymbol[]>();
 
     if (!argv.filePattern) {
-      logger.error("No file pattern provided");
+      logger.fatal("No file pattern provided");
       process.exitCode = 1;
       return;
     }
+    const ignore = (argv.ignore || []).map(String);
     const files = glob.stream(argv.filePattern, {
       absolute: true,
       cwd: rootPath,
+      ignore,
       onlyFiles: true
     });
     for await (const file of files) {
@@ -210,9 +217,7 @@ async function main() {
 
       // Get references for each symbol
       if (argv.noReferences) {
-        fileLogger.info(
-          "Skipping references because --no-references was given"
-        );
+        fileLogger.info("Skipping references because --noReferences was given");
       } else {
         fileLogger.await("Getting references for each symbol");
         for (const symbol of docSymbols) {
@@ -283,6 +288,10 @@ async function main() {
     for (const [definitionSymbol, references] of allReferences) {
       const referencingSymbols: LSPSymbol[] = [];
       for (const reference of references) {
+        const filePath = fileURLToPath(reference.uri);
+        if (micromatch.isMatch(filePath, ignore as any)) {
+          continue;
+        }
         const documentSymbols: LSPSymbol[] | undefined = symbols.get(
           reference.uri
         );

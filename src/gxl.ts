@@ -5,7 +5,6 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { LSPSymbol } from "./lsp";
 import * as path from "path";
 import formatXml from "xml-formatter";
-import * as util from "util";
 import { Signale } from "signale";
 
 type GXLEdgeType = "Source_Dependency" | "Enclosing";
@@ -45,12 +44,6 @@ export function asGXL(
   const graphElement = document.createElement("graph");
   document.documentElement.append(graphElement);
   graphElement.setAttribute("id", hashObject([symbolsByFile, references]));
-
-  function createDebugComment(value: any): Comment {
-    return document.createComment(
-      " " + util.inspect(value, { colors: false, breakLength: Infinity }) + " "
-    );
-  }
 
   function createGXLType(type: string): Element {
     const typeEl = document.createElement("type");
@@ -178,7 +171,6 @@ export function asGXL(
         }
       }
 
-      graphElement.append(createDebugComment(symbol));
       const node = createGXLNode(nodeID, type, {
         "Source.Name": symbol.name,
         "Source.Line": range.start.line,
@@ -190,11 +182,9 @@ export function asGXL(
       // References
       const referencesToSymbol = references.get(symbol) || [];
       if (referencesToSymbol.length > 0) {
-        graphElement.append(document.createComment(" References: "));
         for (const referenceSymbol of referencesToSymbol) {
           const referenceNodeID = symbolId(referenceSymbol);
           edgeNodeIds.push({ from: referenceNodeID, to: nodeID });
-          graphElement.append(createDebugComment(referenceSymbol));
           const edge = createGXLEdge(
             referenceNodeID,
             nodeID,
@@ -203,8 +193,6 @@ export function asGXL(
           graphElement.append(edge);
         }
       }
-
-      graphElement.append("\n\n");
     }
   }
 

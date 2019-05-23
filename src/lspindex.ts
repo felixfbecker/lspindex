@@ -312,7 +312,7 @@ async function main() {
               definitionSymbol.name
             )} was not within any symbol`
           );
-          logger.debug({ reference, definitionSymbol });
+          // logger.debug({ reference, definitionSymbol });
           continue;
         }
         if (!getGXLSymbolKind(referencingSymbol)) {

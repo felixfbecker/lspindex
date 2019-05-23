@@ -42,6 +42,7 @@ export function asGXL(
   const window = jsdom.window as DOMWindow & typeof globalThis;
   const document: XMLDocument = window.document;
   const graphElement = document.createElement("graph");
+  graphElement.setAttribute("edgeids", String(true));
   document.documentElement.append(graphElement);
   graphElement.setAttribute("id", hashObject([symbolsByFile, references]));
 
@@ -74,6 +75,7 @@ export function asGXL(
     const edge = document.createElement("edge");
     edge.setAttribute("from", from);
     edge.setAttribute("to", to);
+    edge.setAttribute("id", hashObject({ from, to, type }));
     edge.append(createGXLType(type));
     return edge;
   }

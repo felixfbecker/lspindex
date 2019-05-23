@@ -336,7 +336,7 @@ async function main() {
       symbolToSymbolReferences.set(definitionSymbol, referencingSymbols);
     }
 
-    logger.await("Serializing to GXL");
+    logger.await("Generating GXL");
     const outFile = path.resolve(argv.outFile);
     // await writeFile(
     //   outFile.replace(/\.gxl$/, ".json"),

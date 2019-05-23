@@ -201,24 +201,22 @@ export function asGXL(
   // Verify
   for (const edge of edgeNodeIds) {
     if (!nodeIds.has(edge.from)) {
-      logger.error(
-        `Error: Edge is referencing non-existant from node ${edge.from}`
-      );
+      logger.error(`Edge is referencing non-existant from node ${edge.from}`);
     }
 
     if (!nodeIds.has(edge.to)) {
-      logger.error(
-        `Error: Edge is referencing non-existant to node ${edge.to}`
-      );
+      logger.error(`Edge is referencing non-existant to node ${edge.to}`);
     }
   }
 
   logger.info(`${nodeIds.size} nodes total`);
   logger.info(`${edgeNodeIds.length} edges total`);
 
+  logger.await("Serializing GXL");
   const serializer = new window.XMLSerializer();
   const xmlStr =
     XML_PROCESSING_INSTRUCTION + "\n" + serializer.serializeToString(document);
+  logger.await("Formatting GXL");
   return formatXml(xmlStr, { collapseContent: true, stripComments: false });
 }
 

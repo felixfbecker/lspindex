@@ -1,13 +1,10 @@
-import {
-  SymbolInformation,
-  DocumentSymbol,
-  SymbolKind
-} from "vscode-languageserver-types";
+import { DocumentSymbol, SymbolKind } from "vscode-languageserver-types";
 import { JSDOM, DOMWindow } from "jsdom";
 import hashObject from "object-hash";
 import { fileURLToPath, pathToFileURL } from "url";
 import { LSPSymbol } from "./lsp";
 import * as path from "path";
+import signale from "signale";
 
 type GXLEdgeType = "Source_Dependency" | "Enclosing";
 
@@ -131,20 +128,24 @@ export function asGXL(
                 parentDirSymbols.length > 1 ||
                 parentDirSymbols[0].kind !== SymbolKind.File
               ) {
-                console.error(
+                signale.error(
                   "Error: Expected parent dir to only have a single symbol of kind File, got",
                   parentDirSymbols
                 );
               }
-              console.log("Adding node for directory of", filePath);
+              signale.info("Adding node for directory of", filePath);
               const edge = createGXLEdge(
                 nodeID,
                 symbolId(parentDirSymbols[0]),
                 "Enclosing"
               );
               graphElement.append("\n", edge);
-            } else {
-              console.error("Error: Expected parent dir symbol for", symbol);
+            } else if (filePath !== rootPath) {
+              signale.error(
+                "Error: Expected parent dir symbol for symbol",
+                symbol,
+                { relativeFilePath, rootPath, parentDirectoryPath }
+              );
             }
           }
         }
@@ -193,17 +194,20 @@ export function asGXL(
   // Verify
   for (const edge of edgeNodeIds) {
     if (!nodeIds.has(edge.from)) {
-      console.error(
+      signale.error(
         `Error: Edge is referencing non-existant from node ${edge.from}`
       );
     }
 
     if (!nodeIds.has(edge.to)) {
-      console.error(
+      signale.error(
         `Error: Edge is referencing non-existant to node ${edge.to}`
       );
     }
   }
+
+  signale.info(`${nodeIds.size} nodes total`);
+  signale.info(`${edgeNodeIds.length} edges total`);
 
   const serializer = new window.XMLSerializer();
   return (

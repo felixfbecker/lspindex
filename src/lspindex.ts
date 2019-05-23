@@ -1,11 +1,10 @@
-import yargs = require("yargs");
+import yargs from "yargs";
+import chalk from "chalk";
 import {
-  WorkspaceSymbolRequest,
   InitializeRequest,
   InitializeParams,
   ShutdownRequest,
   DocumentSymbolRequest,
-  SymbolInformation,
   DocumentSymbol,
   DocumentSymbolParams,
   ReferenceParams,
@@ -20,49 +19,57 @@ import {
 } from "vscode-jsonrpc";
 import { spawn } from "child_process";
 import * as path from "path";
-import { pathToFileURL, fileURLToPath } from "url";
+import { pathToFileURL } from "url";
 import glob from "fast-glob";
 import { asGXL, getGXLSymbolKind } from "./gxl";
 import { writeFile, readFile } from "mz/fs";
 import { Range } from "@sourcegraph/extension-api-classes";
 import { LSPSymbol } from "./lsp";
-import { sortBy, invert } from "lodash";
+import { sortBy, invert, mapValues } from "lodash";
+import signale from "signale";
+import * as util from "util";
 
-const symbolSizes = (invert(
-  [
-    SymbolKind.Package,
-    SymbolKind.Namespace,
-    SymbolKind.File,
-    SymbolKind.Module,
-    SymbolKind.Class,
-    SymbolKind.Function,
-    SymbolKind.Enum,
-    SymbolKind.Interface,
-    SymbolKind.Method,
-    SymbolKind.Constructor,
-    SymbolKind.Field,
-    SymbolKind.Property,
-    SymbolKind.EnumMember,
-    SymbolKind.Variable,
-    SymbolKind.TypeParameter,
-    SymbolKind.Constant,
-    SymbolKind.String,
-    SymbolKind.Number,
-    SymbolKind.Boolean,
-    SymbolKind.Array,
-    SymbolKind.Object,
-    SymbolKind.Key,
-    SymbolKind.Null,
-    SymbolKind.Struct,
-    SymbolKind.Event,
-    SymbolKind.Operator
-  ].reverse()
-) as any) as Record<SymbolKind, number>;
-console.log(symbolSizes);
+const symbolSizes = mapValues(
+  invert(
+    [
+      SymbolKind.Package,
+      SymbolKind.Namespace,
+      SymbolKind.File,
+      SymbolKind.Module,
+      SymbolKind.Class,
+      SymbolKind.Function,
+      SymbolKind.Enum,
+      SymbolKind.Interface,
+      SymbolKind.Method,
+      SymbolKind.Constructor,
+      SymbolKind.Field,
+      SymbolKind.Property,
+      SymbolKind.EnumMember,
+      SymbolKind.Variable,
+      SymbolKind.TypeParameter,
+      SymbolKind.Constant,
+      SymbolKind.String,
+      SymbolKind.Number,
+      SymbolKind.Boolean,
+      SymbolKind.Array,
+      SymbolKind.Object,
+      SymbolKind.Key,
+      SymbolKind.Null,
+      SymbolKind.Struct,
+      SymbolKind.Event,
+      SymbolKind.Operator
+    ].reverse()
+  ),
+  str => parseInt(str, 10)
+) as Record<SymbolKind, number>;
 
 async function main() {
   const using: (() => any)[] = [];
   try {
+    util.inspect.defaultOptions = {
+      ...util.inspect.defaultOptions,
+      colors: true
+    };
     const argv = yargs
       .option("rootPath", {
         type: "string",
@@ -91,19 +98,19 @@ async function main() {
       )
       .help().argv;
     if (argv._.length < 1) {
-      console.error("No language server command given");
+      signale.error("No language server command given");
       process.exitCode = 1;
       return;
     }
-    console.log("running", argv._);
+    signale.info("running", argv._);
 
-    let json: any | undefined;
+    // let json: any | undefined;
     // try {
     //   json = JSON.parse(
     //     await readFile(argv.outFile.replace(/\.gxl$/, ".json"), "utf-8")
     //   );
     // } catch (err) {
-    //   console.error(err.message);
+    //   signale.error(err.message);
     // }
 
     // Spawn language server
@@ -112,11 +119,11 @@ async function main() {
     const connection = createMessageConnection(
       new StreamMessageReader(childProcess.stdout),
       new StreamMessageWriter(childProcess.stdin),
-      console
+      signale
     );
     connection.listen();
     using.push(() => connection.sendRequest(ShutdownRequest.type));
-    connection.onError(err => console.error(err));
+    connection.onError(err => signale.error(err));
 
     // Initialize
     const rootPath = path.resolve(argv.rootPath);
@@ -131,7 +138,7 @@ async function main() {
       InitializeRequest.type,
       initParams
     );
-    console.log("initialize result", initResult);
+    signale.info("Initialize result", initResult);
 
     // Query symbols
     /** Map from URI to symbols */
@@ -141,7 +148,7 @@ async function main() {
     const symbolToSymbolReferences = new Map<LSPSymbol, LSPSymbol[]>();
 
     if (!argv.filePattern) {
-      console.error("No file pattern provided");
+      signale.error("No file pattern provided");
       process.exitCode = 1;
       return;
     }
@@ -154,7 +161,7 @@ async function main() {
       const uri = pathToFileURL(file.toString()).href;
       const relativePath = path.relative(rootPath, file.toString());
       const docParams: DocumentSymbolParams = { textDocument: { uri } };
-      console.log("Getting symbols for", file);
+      signale.await("Getting symbols for", file);
       const docSymbols: LSPSymbol[] =
         (await connection.sendRequest(DocumentSymbolRequest.type, docParams)) ||
         [];
@@ -216,11 +223,12 @@ async function main() {
           ) {
             referencePosition.character += "class ".length + 1;
           }
-          console.log("\nGetting references for", symbol.name);
-          console.log(
+          signale.await("Getting references for", chalk.italic(symbol.name));
+          signale.info(
+            "Code line:",
             lineContent.slice(0, range.start.character) +
-              "❗️" +
-              lineContent.slice(range.start.character)
+              chalk.bgWhite.black(lineContent[range.start.character]) +
+              lineContent.slice(range.start.character + 1)
           );
           const referenceParams: ReferenceParams = {
             context: { includeDeclaration: false },
@@ -231,7 +239,7 @@ async function main() {
             ReferencesRequest.type,
             referenceParams
           );
-          console.log("references", references && references.length);
+          signale.success("Found", (references || []).length, "references");
           allReferences.set(symbol, references || []);
         }
       }
@@ -271,13 +279,16 @@ async function main() {
           ).contains(referenceRange)
         );
         if (!referencingSymbol) {
-          console.log(
-            `Reference to ${definitionSymbol.name} was not within any symbol`
+          signale.warn(
+            `Reference to ${chalk.bold(
+              definitionSymbol.name
+            )} was not within any symbol`,
+            reference
           );
           continue;
         }
         if (!getGXLSymbolKind(referencingSymbol)) {
-          console.log(
+          signale.info(
             `Reference of ${referencingSymbol.name} to ${
               definitionSymbol.name
             } excluded because it is of kind ${getGXLSymbolKind(
@@ -285,10 +296,10 @@ async function main() {
             )}`
           );
         }
-        console.log(
-          `Mapped reference from ${referencingSymbol.name} to ${
-            definitionSymbol.name
-          }`
+        signale.success(
+          `Mapped reference from ${chalk.bold(
+            referencingSymbol.name
+          )} to ${chalk.bold(definitionSymbol.name)}`
         );
         referencingSymbols.push(referencingSymbol);
       }
@@ -310,9 +321,9 @@ async function main() {
     // );
     const gxl = asGXL(symbols, symbolToSymbolReferences, rootPath);
     await writeFile(outFile, gxl);
-    console.log("wrote result to", outFile);
+    signale.success("wrote result to", outFile);
   } catch (err) {
-    console.error(err);
+    signale.fatal(err);
     process.exitCode = 1;
   } finally {
     for (const fn of using) {

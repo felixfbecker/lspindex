@@ -5,6 +5,7 @@
     "module": "commonjs",
     "esModuleInterop": true,
     "strict": true,
+    "noUnusedLocals": true,
     "outDir": "build",
     "rootDir": "src",
     "noErrorTruncation": true,

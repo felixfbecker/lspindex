@@ -39,7 +39,6 @@
     "sourcegraph": "^23.0.1",
     "vscode-jsonrpc": "^4.0.0",
     "vscode-languageserver-protocol": "^3.14.1",
-    "xml-formatter": "^1.1.0",
     "yargs": "^13.2.2"
   }
 }

@@ -4,7 +4,6 @@ import hashObject from "object-hash";
 import { fileURLToPath, pathToFileURL } from "url";
 import { LSPSymbol } from "./lsp";
 import * as path from "path";
-import formatXml from "xml-formatter";
 import { Signale } from "signale";
 
 type GXLEdgeType = "Source_Dependency" | "Enclosing";
@@ -43,7 +42,7 @@ export function asGXL(
   const document: XMLDocument = window.document;
   const graphElement = document.createElement("graph");
   graphElement.setAttribute("edgeids", String(true));
-  document.documentElement.append(graphElement);
+  document.documentElement.append("\n  ", graphElement);
   graphElement.setAttribute("id", hashObject([symbolsByFile, references]));
 
   function createGXLType(type: string): Element {
@@ -59,7 +58,7 @@ export function asGXL(
   ): Element {
     const node = document.createElement("node");
     node.setAttribute("id", id);
-    node.append(createGXLType(type));
+    node.append("\n      ", createGXLType(type));
 
     for (const [name, value] of Object.entries(attrs)) {
       if (value === null || value === undefined) {
@@ -68,6 +67,7 @@ export function asGXL(
       addGXLAttribute(node, name, value);
     }
 
+    node.append("\n    ");
     return node;
   }
 
@@ -76,7 +76,7 @@ export function asGXL(
     edge.setAttribute("from", from);
     edge.setAttribute("to", to);
     edge.setAttribute("id", hashObject({ from, to, type }));
-    edge.append(createGXLType(type));
+    edge.append("\n      ", createGXLType(type), "\n    ");
     return edge;
   }
 
@@ -97,7 +97,7 @@ export function asGXL(
     attribute.setAttribute("name", name);
     const valueElement = attribute.appendChild(document.createElement(type));
     valueElement.textContent = value.toString();
-    node.append(attribute);
+    node.append("\n      ", attribute);
   }
 
   const nodeIds = new Set<string>();
@@ -143,7 +143,7 @@ export function asGXL(
                 symbolId(parentDirSymbols[0]),
                 "Enclosing"
               );
-              graphElement.append(edge);
+              graphElement.append("\n    ", edge);
             } else if (filePath !== rootPath) {
               logger.error(
                 "Error: Expected parent dir symbol for symbol",
@@ -158,7 +158,12 @@ export function asGXL(
         if (!DocumentSymbol.is(symbol)) {
           const container = symbols.find(s => s.name === symbol.containerName);
           if (container) {
-            createGXLEdge(nodeID, symbolId(container), "Enclosing");
+            const edge = createGXLEdge(
+              nodeID,
+              symbolId(container),
+              "Enclosing"
+            );
+            graphElement.append("\n    ", edge);
           } else {
             // Add edge to containing file
             const fileSymbol = symbols.find(
@@ -167,7 +172,12 @@ export function asGXL(
                 s.name === path.relative(rootPath, fileURLToPath(uri))
             )!;
             if (fileSymbol) {
-              createGXLEdge(nodeID, symbolId(fileSymbol), "Enclosing");
+              const edge = createGXLEdge(
+                nodeID,
+                symbolId(fileSymbol),
+                "Enclosing"
+              );
+              graphElement.append("\n    ", edge);
             }
           }
         }
@@ -179,7 +189,7 @@ export function asGXL(
         "Source.Column": range.start.character,
         "Source.Path": path.relative(rootPath, fileURLToPath(uri))
       });
-      graphElement.append(node);
+      graphElement.append("\n    ", node);
 
       // References
       const referencesToSymbol = references.get(symbol) || [];
@@ -192,11 +202,14 @@ export function asGXL(
             nodeID,
             "Source_Dependency"
           );
-          graphElement.append(edge);
+          graphElement.append("\n      ", edge);
         }
       }
     }
   }
+
+  graphElement.append("\n  ");
+  document.documentElement.append("\n");
 
   // Verify
   for (const edge of edgeNodeIds) {
@@ -216,8 +229,7 @@ export function asGXL(
   const serializer = new window.XMLSerializer();
   const xmlStr =
     XML_PROCESSING_INSTRUCTION + "\n" + serializer.serializeToString(document);
-  logger.await("Formatting GXL");
-  return formatXml(xmlStr, { collapseContent: true, stripComments: false });
+  return xmlStr;
 }
 
 export function getGXLSymbolKind(symbol: LSPSymbol): string | undefined {

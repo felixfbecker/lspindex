@@ -351,8 +351,9 @@ async function main() {
     //   )
     // );
     const gxl = asGXL(symbols, symbolToSymbolReferences, rootPath, logger);
+    logger.await("Writing result to file");
     await writeFile(outFile, gxl);
-    logger.success("wrote result to", outFile);
+    logger.success("Saved result to", outFile);
     logger.timeEnd(timer);
   } catch (err) {
     logger.fatal(err);

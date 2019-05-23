@@ -279,7 +279,7 @@ async function main() {
         }
       });
 
-      logger.success(`${docSymbols.length} symbols`);
+      fileLogger.success(`${docSymbols.length} symbols`);
     }
 
     // After knowing all symbols:

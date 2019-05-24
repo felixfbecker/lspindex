@@ -2,7 +2,7 @@ import { DocumentSymbol, SymbolKind } from "vscode-languageserver-types";
 import { JSDOM, DOMWindow } from "jsdom";
 import hashObject from "object-hash";
 import { fileURLToPath, pathToFileURL } from "url";
-import { LSPSymbol } from "./lsp";
+import { LSPSymbol, SYMBOL_KIND_DIRECTORY } from "./lsp";
 import * as path from "path";
 import { Signale } from "signale";
 import chalk from "chalk";
@@ -120,7 +120,10 @@ export function asGXL(
         : symbol.location.range;
 
       // Add Enclosing edge from file/directory to parent directory
-      if (symbol.kind === SymbolKind.File) {
+      if (
+        symbol.kind === SymbolKind.File ||
+        symbol.kind === SYMBOL_KIND_DIRECTORY
+      ) {
         // Don't go past the root path
         if (
           relativeFilePath === ".." ||
@@ -139,11 +142,13 @@ export function asGXL(
           if (parentDirSymbols) {
             if (
               parentDirSymbols.length !== 1 ||
-              parentDirSymbols[0].kind !== SymbolKind.File
+              parentDirSymbols[0].kind !== SYMBOL_KIND_DIRECTORY
             ) {
-              logger.error(
-                "Expected parent dir to only have a single symbol of kind File, got",
-                parentDirSymbols
+              throw Object.assign(
+                new Error(
+                  "Expected parent dir to only have a single symbol of kind Directory"
+                ),
+                { parentDirSymbols }
               );
             }
             logger.info(
@@ -171,7 +176,7 @@ export function asGXL(
           const container = symbols.find(s => s.name === symbol.containerName);
           if (container) {
             logger.info(
-              "Adding Encloding edge from",
+              "Adding Enclosing edge from",
               chalk.bold(symbol.name),
               "to container",
               chalk.bold(container.name)
@@ -198,7 +203,7 @@ export function asGXL(
               );
             } else {
               logger.info(
-                "Adding Encloding edge from",
+                "Adding Enclosing edge from",
                 chalk.bold(symbol.name),
                 "to containing file",
                 chalk.bold(relativeFilePath)
@@ -278,6 +283,8 @@ export function asGXL(
 
 export function getGXLSymbolKind(symbol: LSPSymbol): string | undefined {
   switch (symbol.kind) {
+    case SYMBOL_KIND_DIRECTORY:
+      return "Directory";
     case SymbolKind.File:
       // case SymbolKind.Module:
       return "File";

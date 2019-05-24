@@ -24,7 +24,7 @@ import glob from "fast-glob";
 import { asGXL, getGXLSymbolKind } from "./gxl";
 import { writeFile, readFile } from "mz/fs";
 import { Range } from "@sourcegraph/extension-api-classes";
-import { LSPSymbol } from "./lsp";
+import { LSPSymbol, SYMBOL_KIND_DIRECTORY } from "./lsp";
 import { sortBy, invert, mapValues } from "lodash";
 import { Signale, SignaleOptions } from "signale";
 import * as util from "util";
@@ -204,7 +204,7 @@ async function main() {
             {
               name: path.basename(dir),
               containerName: path.basename(path.join(dir, "..")),
-              kind: SymbolKind.File,
+              kind: SYMBOL_KIND_DIRECTORY,
               location: {
                 uri,
                 range: {

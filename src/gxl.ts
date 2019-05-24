@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { LSPSymbol } from "./lsp";
 import * as path from "path";
 import { Signale } from "signale";
+import chalk from "chalk";
 
 type GXLEdgeType = "Source_Dependency" | "Enclosing";
 
@@ -104,9 +105,12 @@ export function asGXL(
   const edgeNodeIds: { from: string; to: string }[] = [];
 
   for (const [uri, symbols] of symbolsByFile) {
+    const filePath = fileURLToPath(uri);
+    const relativeFilePath = path.relative(rootPath, filePath);
     for (const symbol of symbols) {
       const type = getGXLSymbolKind(symbol);
       if (!type) {
+        logger.info("Skipping symbol", chalk.bold(symbol.name));
         continue;
       }
       const nodeID = symbolId(symbol);
@@ -115,42 +119,50 @@ export function asGXL(
         ? symbol.range
         : symbol.location.range;
 
-      // Add node for parent directory
+      // Add Enclosing edge from file/directory to parent directory
       if (symbol.kind === SymbolKind.File) {
-        const filePath = fileURLToPath(uri);
-        const relativeFilePath = path.relative(rootPath, filePath);
+        // Don't go past the root path
         if (
-          relativeFilePath !== ".." &&
-          !relativeFilePath.startsWith(".." + path.sep)
+          relativeFilePath === ".." ||
+          relativeFilePath.startsWith(".." + path.sep)
         ) {
+          throw Object.assign(
+            new Error("File outside the root made it into the index"),
+            { symbol }
+          );
+        }
+        // Don't add an Enclosing edge for the root directory node
+        if (relativeFilePath !== "") {
           const parentDirectoryPath = path.join(filePath, "..");
           const parentDirectoryUri = pathToFileURL(parentDirectoryPath).href;
-          if (parentDirectoryPath !== rootPath) {
-            const parentDirSymbols = symbolsByFile.get(parentDirectoryUri);
-            if (parentDirSymbols) {
-              if (
-                parentDirSymbols.length > 1 ||
-                parentDirSymbols[0].kind !== SymbolKind.File
-              ) {
-                logger.error(
-                  "Error: Expected parent dir to only have a single symbol of kind File, got",
-                  parentDirSymbols
-                );
-              }
-              logger.info("Adding node for directory of", filePath);
-              const edge = createGXLEdge(
-                nodeID,
-                symbolId(parentDirSymbols[0]),
-                "Enclosing"
-              );
-              graphElement.append("\n    ", edge);
-            } else if (filePath !== rootPath) {
+          const parentDirSymbols = symbolsByFile.get(parentDirectoryUri);
+          if (parentDirSymbols) {
+            if (
+              parentDirSymbols.length !== 1 ||
+              parentDirSymbols[0].kind !== SymbolKind.File
+            ) {
               logger.error(
-                "Error: Expected parent dir symbol for symbol",
-                symbol,
-                { relativeFilePath, rootPath, parentDirectoryPath }
+                "Expected parent dir to only have a single symbol of kind File, got",
+                parentDirSymbols
               );
             }
+            logger.info(
+              "Adding Enclosing edge to directory of",
+              relativeFilePath
+            );
+            // from : child
+            // to   : parent
+            const from = nodeID;
+            const to = symbolId(parentDirSymbols[0]);
+            const edge = createGXLEdge(from, to, "Enclosing");
+            graphElement.append("\n    ", edge);
+            edgeNodeIds.push({ from, to });
+          } else if (filePath !== rootPath) {
+            logger.error("Expected parent dir symbol for symbol", symbol, {
+              relativeFilePath,
+              rootPath,
+              parentDirectoryPath
+            });
           }
         }
       } else {
@@ -158,31 +170,56 @@ export function asGXL(
         if (!DocumentSymbol.is(symbol)) {
           const container = symbols.find(s => s.name === symbol.containerName);
           if (container) {
-            const edge = createGXLEdge(
-              nodeID,
-              symbolId(container),
-              "Enclosing"
+            logger.info(
+              "Adding Encloding edge from",
+              chalk.bold(symbol.name),
+              "to container",
+              chalk.bold(container.name)
             );
+            // from : child
+            // to   : parent
+            const from = nodeID;
+            const to = symbolId(container);
+            const edge = createGXLEdge(from, to, "Enclosing");
             graphElement.append("\n    ", edge);
+            edgeNodeIds.push({ from, to });
           } else {
             // Add edge to containing file
             const fileSymbol = symbols.find(
               s =>
-                s.kind === SymbolKind.File &&
-                s.name === path.relative(rootPath, fileURLToPath(uri))
-            )!;
-            if (fileSymbol) {
-              const edge = createGXLEdge(
-                nodeID,
-                symbolId(fileSymbol),
-                "Enclosing"
+                s.kind === SymbolKind.File && s.name === path.basename(filePath)
+            );
+            if (!fileSymbol) {
+              logger.error(
+                "Expected document symbols for file",
+                relativeFilePath,
+                "to contain symbol of kind File",
+                symbols
               );
+            } else {
+              logger.info(
+                "Adding Encloding edge from",
+                chalk.bold(symbol.name),
+                "to containing file",
+                chalk.bold(relativeFilePath)
+              );
+              const from = nodeID;
+              const to = symbolId(fileSymbol);
+              const edge = createGXLEdge(from, to, "Enclosing");
               graphElement.append("\n    ", edge);
+              edgeNodeIds.push({ from, to });
             }
           }
         }
       }
 
+      logger.info(
+        "Adding node for",
+        type,
+        chalk.bold(symbol.name),
+        "in",
+        relativeFilePath
+      );
       const node = createGXLNode(nodeID, type, {
         "Source.Name": symbol.name,
         "Source.Line": range.start.line,
@@ -197,12 +234,18 @@ export function asGXL(
         for (const referenceSymbol of referencesToSymbol) {
           const referenceNodeID = symbolId(referenceSymbol);
           edgeNodeIds.push({ from: referenceNodeID, to: nodeID });
+          logger.info(
+            "Adding Source_Dependency edge from",
+            chalk.bold(referenceSymbol.name),
+            "to",
+            chalk.bold(symbol.name)
+          );
           const edge = createGXLEdge(
             referenceNodeID,
             nodeID,
             "Source_Dependency"
           );
-          graphElement.append("\n      ", edge);
+          graphElement.append("\n    ", edge);
         }
       }
     }
@@ -211,7 +254,8 @@ export function asGXL(
   graphElement.append("\n  ");
   document.documentElement.append("\n");
 
-  // Verify
+  // Make sure there are no non-existing edge references
+  logger.await("Validating edge IDs");
   for (const edge of edgeNodeIds) {
     if (!nodeIds.has(edge.from)) {
       logger.error(`Edge is referencing non-existant from node ${edge.from}`);
@@ -235,7 +279,7 @@ export function asGXL(
 export function getGXLSymbolKind(symbol: LSPSymbol): string | undefined {
   switch (symbol.kind) {
     case SymbolKind.File:
-    case SymbolKind.Module:
+      // case SymbolKind.Module:
       return "File";
     case SymbolKind.Class:
       return "Class";

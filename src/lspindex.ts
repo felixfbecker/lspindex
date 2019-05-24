@@ -180,10 +180,12 @@ async function main() {
       const docParams: DocumentSymbolParams = { textDocument: { uri } };
       const fileLogger = logger.scope(relativePath);
       fileLogger.await("Getting symbols for", file);
-      const docSymbols: LSPSymbol[] =
+      const symbolsResult: LSPSymbol[] =
         (await connection.sendRequest(DocumentSymbolRequest.type, docParams)) ||
         [];
-      symbols.set(uri, docSymbols.filter(getGXLSymbolKind));
+      // Filter out irrelevant symbols
+      const docSymbols = symbolsResult.filter(getGXLSymbolKind);
+      symbols.set(uri, docSymbols);
 
       // Add symbols for directories
       const segments = file.toString().split(path.sep);

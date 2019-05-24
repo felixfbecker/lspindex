@@ -12,7 +12,8 @@
   "license": "MIT",
   "bin": "cli.js",
   "scripts": {
-    "build": "tsc -p ."
+    "build": "tsc -p .",
+    "prepublish": "npm run build"
   },
   "devDependencies": {
     "@types/jsdom": "^12.2.3",

@@ -260,7 +260,7 @@ export function asGXL(
   document.documentElement.append("\n");
 
   // Make sure there are no non-existing edge references
-  logger.await("Validating edge IDs");
+  logger.await("Validating edge reference IDs");
   for (const edge of edgeNodeIds) {
     if (!nodeIds.has(edge.from)) {
       logger.error(`Edge is referencing non-existant from node ${edge.from}`);
@@ -270,6 +270,52 @@ export function asGXL(
       logger.error(`Edge is referencing non-existant to node ${edge.to}`);
     }
   }
+  logger.success("All edge reference IDs are valid");
+
+  // function print(id: string, indent: number) {
+  //   const refsTo = [
+  //     ...graphElement.querySelectorAll(`edge[to="${id}"]`)
+  //   ].filter(
+  //     e =>
+  //       e.querySelector("type")!.getAttributeNS(XLINK_NS, "href") ===
+  //       "Source_Dependency"
+  //   ).length;
+  //   const refsFrom = [
+  //     ...graphElement.querySelectorAll(`edge[from="${id}"]`)
+  //   ].filter(
+  //     e =>
+  //       e.querySelector("type")!.getAttributeNS(XLINK_NS, "href") ===
+  //       "Source_Dependency"
+  //   ).length;
+  //   logger.debug(
+  //     "    ".repeat(indent) +
+  //       "└─ " +
+  //       id +
+  //       chalk.red(` ${refsTo} refs to, ${refsFrom} refs from`)
+  //   );
+  //   for (const edge of graphElement.querySelectorAll(`edge[to="${id}"]`)) {
+  //     if (
+  //       edge.querySelector("type")!.getAttributeNS(XLINK_NS, "href") !==
+  //       "Enclosing"
+  //     ) {
+  //       continue;
+  //     }
+  //     print(edge.getAttribute("from")!, indent + 1);
+  //   }
+  // }
+  // const roots = [...graphElement.querySelectorAll("node")].filter(
+  //   n => !graphElement.querySelector(`edge[from="${n.getAttribute("id")!}"]`)
+  // );
+  // if (roots.length > 1) {
+  //   logger.error(
+  //     "Expected only one root node (node that has no Enclosing edge to a parent node), got",
+  //     roots.length
+  //   );
+  // }
+  // logger.debug("Enclosing edges tree");
+  // for (const root of roots) {
+  //   print(root!.getAttribute("id")!, 0);
+  // }
 
   logger.info(`${nodeIds.size} nodes total`);
   logger.info(`${edgeNodeIds.length} edges total`);

@@ -19,6 +19,7 @@ const symbolId = (symbol: LSPSymbol): string =>
   hashObject(symbol);
 
 interface GXLNodeAttributes {
+  "Linkage.Name": string;
   "Source.Name": string;
   "Source.Line": number;
   "Source.Column": number;
@@ -226,6 +227,7 @@ export function asGXL(
         relativeFilePath
       );
       const node = createGXLNode(nodeID, type, {
+        "Linkage.Name": nodeID,
         "Source.Name": symbol.name,
         "Source.Line": range.start.line,
         "Source.Column": range.start.character,

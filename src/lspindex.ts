@@ -98,6 +98,10 @@ async function main() {
         type: "boolean",
         description: "Do not include references"
       })
+      .option("showTree", {
+        type: "boolean",
+        description: "Print a visualisation of the symbol hierachy"
+      })
       .option("logLevel", {
         type: "string",
         description: "info, debug, warn, error (default: info)"
@@ -192,10 +196,7 @@ async function main() {
       while (segments.pop()) {
         const dir = segments.join(path.sep);
         const relativeDirPath = path.relative(rootPath, dir);
-        if (
-          relativeDirPath === ".." ||
-          relativeDirPath.startsWith(".." + path.sep)
-        ) {
+        if (relativeDirPath === "") {
           break;
         }
         const uri = pathToFileURL(dir).href;
@@ -352,7 +353,13 @@ async function main() {
     //     2
     //   )
     // );
-    const gxl = asGXL(symbols, symbolToSymbolReferences, rootPath, logger);
+    const gxl = asGXL(
+      symbols,
+      symbolToSymbolReferences,
+      rootPath,
+      !!argv.showTree,
+      logger
+    );
     logger.await("Writing result to file");
     await writeFile(outFile, gxl);
     logger.success("Saved result to", outFile);

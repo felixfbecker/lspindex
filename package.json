@@ -1,6 +1,6 @@
 {
   "name": "lspindex",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "CLI tool to build a symbol graph by querying a language server",
   "repository": {
     "type": "git",

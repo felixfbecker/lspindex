@@ -78,7 +78,7 @@ async function main() {
         type: "string",
         demandOption: true,
         description:
-          "The rootUri to pass to the language server in the initialize message"
+          "The path to the project. Is passed as rootUri to the language server in the initialize message"
       })
       .option("filePattern", {
         type: "string",

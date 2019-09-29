@@ -106,9 +106,9 @@ async function main() {
         type: "string",
         description: "info, debug, warn, error (default: info)"
       })
-      .usage("lsp2gxl --rootUri <rootUri> <language server command to run>")
+      .usage("lspindex --rootPath <rootPath> <language server command to run>")
       .example(
-        `lsp2gxl --rootPath /Users/felix/git/flask --filePattern '**/*.py' --outFile flask.gxl pyls`,
+        `lspindex --rootPath /Users/felix/git/flask --filePattern '**/*.py' --outFile flask.gxl pyls`,
         "Analyze Python files in the flask project with the Python language server and write the result to flask.gxl"
       )
       .help().argv;
